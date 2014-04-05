@@ -1,3 +1,121 @@
+# Example of Service
+
+
+## RMS Data
+### Put RMS Data
+
+URL : ```http://power-monitor-cloud.appspot.com/rms```
+
+Method : ```POST```
+
+input
+   ```
+   {
+     "timestamp": 12346,
+     "pu1" : 12,
+     "pu2" : 13,
+     "pu3" : 14
+   }
+   ```
+
+output
+   ```
+   {
+       "status": "OK"
+   }
+   ```
+   
+### Get RMS Data
+
+URL : ```http://power-monitor-cloud.appspot.com/rms```
+Method : ```GET```
+
+input
+   ```
+   NONE
+   ```
+
+output
+   ```
+   {
+     "results": {
+       "rms": [
+         {
+           "pu1": 12, 
+           "pu2": 13, 
+           "pu3": 14, 
+           "timestamp": 12345
+         }, 
+         {
+           "pu1": 12, 
+           "pu2": 13, 
+           "pu3": 14, 
+           "timestamp": 12346
+         }
+       ]
+     }, 
+     "status": "OK"
+   }
+   ```
+   
+## Email Data
+
+### Put Email Data
+
+URL : ```http://power-monitor-cloud.appspot.com/email```
+Method : ```POST```
+
+input
+   ```
+   {
+      "email": "ratchasak.ranron@gmail.com",
+      "sag" : 10,
+      "time" : 60,
+      "enabled" : true
+   }
+   ```
+
+output
+   ```
+   {
+       "status": "OK"
+   }
+   ```
+   
+### Get Email Data
+
+URL : ```http://power-monitor-cloud.appspot.com/email```
+Method : ```GET```
+
+input
+   ```
+   NONE
+   ```
+
+output
+   ```
+   {
+     "results": {
+       "email": [
+         {
+           "email": "ratchasak.cs23@gmail.com", 
+           "enabled": true, 
+           "sag": 1234, 
+           "time": 1234
+         }, 
+         {
+           "email": "ratchasak.ranron@gmail.com", 
+           "enabled": true, 
+           "sag": 10, 
+           "time": 60
+         }
+       ]
+     }, 
+     "status": "OK"
+   }
+   ```
+
+
 ## Python Flask Skeleton for Google App Engine
 
 A skeleton for building Python applications on Google App Engine with the

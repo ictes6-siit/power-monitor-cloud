@@ -22,8 +22,8 @@ class RMS(ndb.Model):
 
     @classmethod
     def del_all(cls):
-        ndb.gql('DELETE * FROM RMSLog')
-        print ndb.gql('DELETE * FROM RMSLog')
+        ndb.gql('DELETE * FROM RMS')
+        print ndb.gql('DELETE * FROM RMS')
 
 
 class Email(ndb.Model):
@@ -42,40 +42,44 @@ def post_rms():
         pu3=request.json['pu3'],
         timestamp=request.json['timestamp'])
     rms.put()
-    return 'ok', 201, {'Access-Control-Allow-Origin': '*'}
+    return jsonify({'status': 'OK'}), 201
 
 
 @app.route('/rms', methods=['GET'])
 @crossdomain(origin='*')
 def get_rms():
-    results = []
+    rms_list = []
     query = RMS.query().order(RMS.timestamp)
     for rms in query:
         data = {'timestamp': rms.timestamp, 'pu1': rms.pu1, 'pu2': rms.pu2, 'pu3': rms.pu3}
-        results.append(data)
-    return jsonify({'rms': results}), 200, {'Access-Control-Allow-Origin': '*'}
+        rms_list.append(data)
+
+    results = {'rms': rms_list}
+    return jsonify({'status': 'OK', 'results': results}), 200
 
 
 @app.route('/rms/<int:from_time>/<int:to_time>', methods=['GET'])
 @crossdomain(origin='*')
 def get_rms_by_to_from_time(from_time, to_time):
-    results = []
+    rms_list = []
     query = RMS.query(RMS.timestamp >= from_time, RMS.timestamp <= to_time).order(RMS.timestamp)
     for rms in query:
         data = {'timestamp': rms.timestamp, 'pu1': rms.pu1, 'pu2': rms.pu2, 'pu3': rms.pu3}
-        results.append(data)
-    return jsonify({'rms': results}), 200, {'Access-Control-Allow-Origin': '*'}
+        rms_list.append(data)
+    results = {'rms': rms_list}
+    return jsonify({'status': 'OK', 'results': results}), 200
 
 
 @app.route('/rms/<int:from_time>', methods=['GET'])
 @crossdomain(origin='*')
 def get_rms_by_from_time(from_time):
-    results = []
+    rms_list = []
     query = RMS.query(RMS.timestamp >= from_time).order(RMS.timestamp)
     for rms in query:
         data = {'timestamp': rms.timestamp, 'pu1': rms.pu1, 'pu2': rms.pu2, 'pu3': rms.pu3}
-        results.append(data)
-    return jsonify({'rms': results}), 200, {'Access-Control-Allow-Origin': '*'}
+        rms_list.append(data)
+    results = {'rms': rms_list}
+    return jsonify({'status': 'OK', 'results': results}), 200
 
 
 @app.route('/email', methods=['POST', 'OPTIONS'])
@@ -88,7 +92,7 @@ def post_email():
         time=int(request.json['time']),
         enabled=bool(request.json['enabled']))
     email.put()
-    return 'ok', 201, {'Access-Control-Allow-Origin': '*'}
+    return jsonify({'status': 'OK'}), 201
 
 
 @app.route('/email', methods=['DELETE'])
@@ -96,7 +100,7 @@ def post_email():
 def delete_email():
     email_key = ndb.Key(Email, request.json['email'])
     email_key.delete()
-    return 'ok', 201, {'Access-Control-Allow-Origin': '*'}
+    return jsonify({'status': 'OK'}), 201
 
 
 @app.route('/email', methods=['PUT'])
@@ -108,18 +112,19 @@ def put_email():
     email.time = request.json['time']
     email.enabled = request.json['enabled']
     email.put()
-    return 'ok', 201, {'Access-Control-Allow-Origin': '*'}
+    return jsonify({'status': 'OK'}), 201
 
 
 @app.route('/email', methods=['GET'])
 @crossdomain(origin='*')
 def get_email():
-    results = []
+    email_list = []
     query = Email.query()
     for email in query:
         data = {'email': email.email, 'sag': email.sag, 'time': email.time, 'enabled': email.enabled}
-        results.append(data)
-    return jsonify({'email': results}), 200, {'Access-Control-Allow-Origin': '*'}
+        email_list.append(data)
+    results = {'email': email_list}
+    return jsonify({'status': 'OK', 'results': results}), 200
 
 
 @app.errorhandler(404)

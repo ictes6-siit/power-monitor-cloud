@@ -195,17 +195,15 @@ def get_rms():
     if start is not None and end is not None and start > end:
         return jsonify({'status': 'Invalid time'})
 
-    # check scale
-    if (is_scale is True) and (start is None or end is None):
-        return jsonify({'status': 'You are using scale, please input both start and end'})
-
     if is_scale is True:
+        if start is None:
+            start = RMS.query_rms(None, None, 1, True)[0].timestamp
+        if end is None:
+            end = RMS.query_rms(None, None, 1, False)[0].timestamp
+
         selected_range = end - start
 
-        if selected_range < 1000:
-            # return 1 point per ms
-            query = RMS.query_rms(start, end, count, is_asc)
-        elif selected_range < 60 * 1000:                             # one minute range
+        if selected_range < 60 * 1000:                             # one minute range
             # return 1 point per second
             query = RMSSecond.query_rms(start, end, count, is_asc)
         elif selected_range < 60 * 60 * 1000:                      # one hour range

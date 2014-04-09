@@ -206,18 +206,15 @@ def get_rms():
         if selected_range < 60 * 1000:                             # one minute range
             # return 1 point per second
             query = RMSSecond.query_rms(start, end, count, is_asc)
-        elif selected_range < 60 * 60 * 1000:                      # one hour range
+        elif selected_range < 30 * 60 * 60 * 1000:               # 30 hours range
             # return 1 point per minute
             query = RMSMinute.query_rms(start, end, count, is_asc)
-        elif selected_range < 24 * 60 * 60 * 1000:               # one day range
-            # return 1 point per hour
-            query = RMSHour.query_rms(start, end, count, is_asc)
         elif selected_range < 31 * 24 * 60 * 60 * 1000:          # one month range
             # return 1 point per day
-            query = RMSDay.query_rms(start, end, count, is_asc)
+            query = RMSHour.query_rms(start, end, count, is_asc)
         elif selected_range < 15 * 31 * 24 * 60 * 60 * 1000:     # one year range
             # return 1 point per month
-            query = RMSMonth.query_rms(start, end, count, is_asc)
+            query = RMSDay.query_rms(start, end, count, is_asc)
         else:
             query = RMSYear.query_rms(start, end, count, is_asc)
     else:

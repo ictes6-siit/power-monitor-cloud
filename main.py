@@ -38,35 +38,35 @@ def post_rms():
             add_sag3 = 1 if prev_rms.pu3 < 90 else 0
 
             # add sag avg in first block
-            sag_time_can = (prev_rms.timestamp - (prev_rms.timestamp % 1000)) + 1000 - prev_rms.timestamp
+            sag_time_can = (prev_rms.timestamp - (prev_rms.timestamp % 60000)) + 60000 - prev_rms.timestamp
             if sag_time_all < sag_time_can:
                 sag_time = sag_time_all
             else:
                 sag_time = sag_time_can
-            second_block_from = prev_rms.timestamp - (prev_rms.timestamp % 1000)
-            second_block_to = second_block_from + 1000
-            rms_second_query = RMSSecond.query_rms(second_block_from, second_block_to, None, False)
-            if rms_second_query.count() > 0:
+            minute_block_from = prev_rms.timestamp - (prev_rms.timestamp % 60000)
+            minute_block_to = minute_block_from + 60000
+            rms_minute_query = RMSMinute.query_rms(minute_block_from, minute_block_to, None, False)
+            if rms_minute_query.count() > 0:
                 # already have the average, use previous average to calculate next avg
-                prev_avg = rms_second_query.get()
+                prev_avg = rms_minute_query.get()
                 # calculate next avg
-                prev_avg.pu1 = ((prev_avg.pu1 * 1000) + (sag_pu1 * sag_time) - (100 * sag_time))/1000.0
-                prev_avg.pu2 = ((prev_avg.pu2 * 1000) + (sag_pu2 * sag_time) - (100 * sag_time))/1000.0
-                prev_avg.pu3 = ((prev_avg.pu3 * 1000) + (sag_pu3 * sag_time) - (100 * sag_time))/1000.0
+                prev_avg.pu1 = ((prev_avg.pu1 * 60000) + (sag_pu1 * sag_time) - (100 * sag_time))/60000.0
+                prev_avg.pu2 = ((prev_avg.pu2 * 60000) + (sag_pu2 * sag_time) - (100 * sag_time))/60000.0
+                prev_avg.pu3 = ((prev_avg.pu3 * 60000) + (sag_pu3 * sag_time) - (100 * sag_time))/60000.0
                 prev_avg.total_sag1 += add_sag1
                 prev_avg.total_sag2 += add_sag2
                 prev_avg.total_sag3 += add_sag3
                 prev_avg.put()
             else:
                 # don't have average
-                avg_pu1 = ((sag_pu1 * sag_time) + (100 * (1000 - sag_time)))/1000.0
-                avg_pu2 = ((sag_pu2 * sag_time) + (100 * (1000 - sag_time)))/1000.0
-                avg_pu3 = ((sag_pu3 * sag_time) + (100 * (1000 - sag_time)))/1000.0
-                new_rms_minute = RMSSecond(
+                avg_pu1 = ((sag_pu1 * sag_time) + (100 * (60000 - sag_time)))/60000.0
+                avg_pu2 = ((sag_pu2 * sag_time) + (100 * (60000 - sag_time)))/60000.0
+                avg_pu3 = ((sag_pu3 * sag_time) + (100 * (60000 - sag_time)))/60000.0
+                new_rms_minute = RMSMinute(
                     pu1=avg_pu1,
                     pu2=avg_pu2,
                     pu3=avg_pu3,
-                    timestamp=second_block_from,
+                    timestamp=minute_block_from,
                     total_sag1=add_sag1,
                     total_sag2=add_sag2,
                     total_sag3=add_sag3)
@@ -74,17 +74,17 @@ def post_rms():
 
             # fill next overlap block
             sag_time_left = sag_time_all - sag_time
-            next_block_pointer = second_block_from + 1000
+            next_block_pointer = minute_block_from + 60000
             while sag_time_left > 0:
-                if sag_time_left > 1000:
-                    sag_time_this_block = 1000
+                if sag_time_left > 60000:
+                    sag_time_this_block = 60000
                 else:
                     sag_time_this_block = sag_time_left
 
-                avg_pu1 = ((sag_pu1 * sag_time_this_block) + (100 * (1000 - sag_time_this_block)))/1000.0
-                avg_pu2 = ((sag_pu2 * sag_time_this_block) + (100 * (1000 - sag_time_this_block)))/1000.0
-                avg_pu3 = ((sag_pu3 * sag_time_this_block) + (100 * (1000 - sag_time_this_block)))/1000.0
-                new_rms_second = RMSSecond(
+                avg_pu1 = ((sag_pu1 * sag_time_this_block) + (100 * (60000 - sag_time_this_block)))/60000.0
+                avg_pu2 = ((sag_pu2 * sag_time_this_block) + (100 * (60000 - sag_time_this_block)))/60000.0
+                avg_pu3 = ((sag_pu3 * sag_time_this_block) + (100 * (60000 - sag_time_this_block)))/60000.0
+                new_rms_minute = RMSMinute(
                     pu1=avg_pu1,
                     pu2=avg_pu2,
                     pu3=avg_pu3,
@@ -92,13 +92,10 @@ def post_rms():
                     total_sag1=add_sag1,
                     total_sag2=add_sag2,
                     total_sag3=add_sag3)
-                new_rms_second.put()
+                new_rms_minute.put()
 
                 sag_time_left -= sag_time_this_block
-                next_block_pointer += 1000
-
-            # update minute resolution
-            _update_resolution(prev_rms, this_rms, (60*1000), RMSSecond, RMSMinute)
+                next_block_pointer += 60000
 
             # update hour resolution
             _update_resolution(prev_rms, this_rms, (60*60*1000), RMSMinute, RMSHour)
@@ -203,10 +200,7 @@ def get_rms():
 
         selected_range = end - start
 
-        if selected_range < 60 * 1000:                             # one minute range
-            # return 1 point per second
-            query = RMSSecond.query_rms(start, end, count, is_asc)
-        elif selected_range < 30 * 60 * 60 * 1000:               # 30 hours range
+        if selected_range < 30 * 60 * 60 * 1000:               # 30 hours range
             # return 1 point per minute
             query = RMSMinute.query_rms(start, end, count, is_asc)
         elif selected_range < 31 * 24 * 60 * 60 * 1000:          # one month range

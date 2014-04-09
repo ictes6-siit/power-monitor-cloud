@@ -226,6 +226,8 @@ def get_rms():
     rms_list = []
     for rms in query:
         data = {'timestamp': rms.timestamp, 'pu1': rms.pu1, 'pu2': rms.pu2, 'pu3': rms.pu3}
+        if is_scale is True:
+            data.update({'total_sag1': rms.total_sag1, 'total_sag2': rms.total_sag2, 'total_sag3': rms.total_sag3})
         rms_list.append(data)
 
     results = {'rms': rms_list}

@@ -16,10 +16,13 @@ def get_test():
 @app.route('/rms.json', methods=['POST', 'OPTIONS'])
 @crossdomain(origin='*', headers='Origin, X-Requested-With, Content-Type, Accept')
 def post_rms():
+    pu1 = (100 - request.json['pu1']) if (request.json['pu1'] < 100) else 100
+    pu2 = (100 - request.json['pu2']) if (request.json['pu2'] < 100) else 100
+    pu3 = (100 - request.json['pu3']) if (request.json['pu3'] < 100) else 100
     this_rms = RMS(
-        pu1=request.json['pu1'],
-        pu2=request.json['pu2'],
-        pu3=request.json['pu3'],
+        pu1=pu1,
+        pu2=pu2,
+        pu3=pu3,
         timestamp=request.json['timestamp'])
 
     # push to other resolution

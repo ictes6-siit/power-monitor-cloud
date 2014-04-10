@@ -11,17 +11,25 @@ import datetime
 import logging
 app = Flask(__name__)
 
-@app.route('/test', methods=['GET'])
-def get_test():
+@app.route('/clear', methods=['GET'])
+def get_clear():
+    ndb.delete_multi(RMS.query().iter(keys_only = True))
     ndb.delete_multi(RMSSecond.query().iter(keys_only = True))
+    ndb.delete_multi(RMSMinute.query().iter(keys_only = True))
+    ndb.delete_multi(RMSHour.query().iter(keys_only = True))
+    ndb.delete_multi(RMSDay.query().iter(keys_only = True))
+    ndb.delete_multi(RMSMonth.query().iter(keys_only = True))
+    ndb.delete_multi(RMSYear.query().iter(keys_only = True))
+    ndb.delete_multi(Email.query().iter(keys_only = True))
+    ndb.delete_multi(LastTS.query().iter(keys_only = True))
     return jsonify({'status': 'OK'}), 200
 
 @app.route('/rms.json', methods=['POST', 'OPTIONS'])
 @crossdomain(origin='*', headers='Origin, X-Requested-With, Content-Type, Accept')
 def post_rms():
-    pu1 = (100 - request.json['pu1']) if (request.json['pu1'] < 100) else 100
-    pu2 = (100 - request.json['pu2']) if (request.json['pu2'] < 100) else 100
-    pu3 = (100 - request.json['pu3']) if (request.json['pu3'] < 100) else 100
+    pu1 = (100 - request.json['pu1']) if (request.json['pu1'] <= 100) else 100
+    pu2 = (100 - request.json['pu2']) if (request.json['pu2'] <= 100) else 100
+    pu3 = (100 - request.json['pu3']) if (request.json['pu3'] <= 100) else 100
     this_rms = RMS(
         pu1=pu1,
         pu2=pu2,
@@ -34,14 +42,14 @@ def post_rms():
     if prev_rms is not None and len(prev_rms) > 0:
         prev_rms = prev_rms[0]
         # check for sag
-        if prev_rms.pu1 < 90 or prev_rms.pu2 < 90 or prev_rms.pu3 < 90:
+        if prev_rms.pu1 <= 90 or prev_rms.pu2 <= 90 or prev_rms.pu3 <= 90:
             sag_time_all = int(this_rms.timestamp) - int(prev_rms.timestamp)
             sag_pu1 = prev_rms.pu1
             sag_pu2 = prev_rms.pu2
             sag_pu3 = prev_rms.pu3
-            add_sag1 = 1 if prev_rms.pu1 < 90 else 0
-            add_sag2 = 1 if prev_rms.pu2 < 90 else 0
-            add_sag3 = 1 if prev_rms.pu3 < 90 else 0
+            add_sag1 = 1 if prev_rms.pu1 <= 90 else 0
+            add_sag2 = 1 if prev_rms.pu2 <= 90 else 0
+            add_sag3 = 1 if prev_rms.pu3 <= 90 else 0
 
             # add sag avg in first block
             sag_time_can = (prev_rms.timestamp - (prev_rms.timestamp % 60000)) + 60000 - prev_rms.timestamp
@@ -50,7 +58,7 @@ def post_rms():
             else:
                 sag_time = sag_time_can
             minute_block_from = prev_rms.timestamp - (prev_rms.timestamp % 60000)
-            minute_block_to = minute_block_from + 60000
+            minute_block_to = minute_block_from + 60000 - 1
             rms_minute_query = RMSMinute.query_rms(minute_block_from, minute_block_to, None, False)
             if rms_minute_query.count() > 0:
                 # already have the average, use previous average to calculate next avg
@@ -87,21 +95,31 @@ def post_rms():
                 else:
                     sag_time_this_block = sag_time_left
 
-                avg_pu1 = ((sag_pu1 * sag_time_this_block) + (100 * (60000 - sag_time_this_block)))/60000.0
-                avg_pu2 = ((sag_pu2 * sag_time_this_block) + (100 * (60000 - sag_time_this_block)))/60000.0
-                avg_pu3 = ((sag_pu3 * sag_time_this_block) + (100 * (60000 - sag_time_this_block)))/60000.0
-                new_rms_minute = RMSMinute(
-                    pu1=avg_pu1,
-                    pu2=avg_pu2,
-                    pu3=avg_pu3,
-                    timestamp=next_block_pointer,
-                    total_sag1=0,
-                    total_sag2=0,
-                    total_sag3=0)
-                new_rms_minute.put()
+                rms_minute_query = RMSMinute.query_rms(next_block_pointer, next_block_pointer + 60000 - 1, None, False)
+                if rms_minute_query.count() > 0:
+                    # already have the average, use previous average to calculate next avg
+                    prev_avg = rms_minute_query.get()
+                    # calculate next avg
+                    prev_avg.pu1 = ((prev_avg.pu1 * 60000) + (sag_pu1 * sag_time_this_block) - (100 * sag_time_this_block))/60000.0
+                    prev_avg.pu2 = ((prev_avg.pu2 * 60000) + (sag_pu2 * sag_time_this_block) - (100 * sag_time_this_block))/60000.0
+                    prev_avg.pu3 = ((prev_avg.pu3 * 60000) + (sag_pu3 * sag_time_this_block) - (100 * sag_time_this_block))/60000.0
+                    prev_avg.put()
+                else:
+                    avg_pu1 = ((sag_pu1 * sag_time_this_block) + (100 * (60000 - sag_time_this_block)))/60000.0
+                    avg_pu2 = ((sag_pu2 * sag_time_this_block) + (100 * (60000 - sag_time_this_block)))/60000.0
+                    avg_pu3 = ((sag_pu3 * sag_time_this_block) + (100 * (60000 - sag_time_this_block)))/60000.0
+                    new_rms_minute = RMSMinute(
+                        pu1=avg_pu1,
+                        pu2=avg_pu2,
+                        pu3=avg_pu3,
+                        timestamp=next_block_pointer,
+                        total_sag1=0,
+                        total_sag2=0,
+                        total_sag3=0)
+                    new_rms_minute.put()
 
-                sag_time_left -= sag_time_this_block
-                next_block_pointer += 60000
+                    sag_time_left -= sag_time_this_block
+                    next_block_pointer += 60000
 
             # update hour resolution
             _update_resolution(prev_rms, this_rms, (60*60*1000), RMSMinute, RMSHour)

@@ -32,56 +32,77 @@ class RMS(ndb.Model):
         return query
 
 
-class RMSSecond(RMS):
+class RMSResolution(ndb.Model):
     timestamp = ndb.IntegerProperty(required=True)
-    pu1 = ndb.FloatProperty(required=True)
-    pu2 = ndb.FloatProperty(required=True)
-    pu3 = ndb.FloatProperty(required=True)
+    period_sag1 = ndb.IntegerProperty(required=True)
+    period_sag2 = ndb.IntegerProperty(required=True)
+    period_sag3 = ndb.IntegerProperty(required=True)
+    total_sag1 = ndb.IntegerProperty(required=True)
+    total_sag2 = ndb.IntegerProperty(required=True)
+    total_sag3 = ndb.IntegerProperty(required=True)
+
+    @classmethod
+    def query_rms(cls, start, end, count, is_asc):
+        query = cls.query()
+        # set filter
+        if start is not None:
+            query = query.filter(cls.timestamp >= start)
+        if end is not None:
+            query = query.filter(cls.timestamp <= end)
+
+        # set order
+        if is_asc is True:
+            query = query.order(cls.timestamp)
+        else:
+            query = query.order(-cls.timestamp)
+
+        # set limit
+        if count is not None:
+            query = query.fetch(limit=count)
+
+        return query
+
+
+class RMSMinute(RMSResolution):
+    period_sag1 = ndb.IntegerProperty(required=True)
+    period_sag2 = ndb.IntegerProperty(required=True)
+    period_sag3 = ndb.IntegerProperty(required=True)
     total_sag1 = ndb.IntegerProperty(required=True)
     total_sag2 = ndb.IntegerProperty(required=True)
     total_sag3 = ndb.IntegerProperty(required=True)
 
 
-class RMSMinute(RMS):
-    pu1 = ndb.FloatProperty(required=True)
-    pu2 = ndb.FloatProperty(required=True)
-    pu3 = ndb.FloatProperty(required=True)
+class RMSHour(RMSResolution):
+    period_sag1 = ndb.IntegerProperty(required=True)
+    period_sag2 = ndb.IntegerProperty(required=True)
+    period_sag3 = ndb.IntegerProperty(required=True)
     total_sag1 = ndb.IntegerProperty(required=True)
     total_sag2 = ndb.IntegerProperty(required=True)
     total_sag3 = ndb.IntegerProperty(required=True)
 
 
-class RMSHour(RMS):
-    pu1 = ndb.FloatProperty(required=True)
-    pu2 = ndb.FloatProperty(required=True)
-    pu3 = ndb.FloatProperty(required=True)
+class RMSDay(RMSResolution):
+    period_sag1 = ndb.IntegerProperty(required=True)
+    period_sag2 = ndb.IntegerProperty(required=True)
+    period_sag3 = ndb.IntegerProperty(required=True)
     total_sag1 = ndb.IntegerProperty(required=True)
     total_sag2 = ndb.IntegerProperty(required=True)
     total_sag3 = ndb.IntegerProperty(required=True)
 
 
-class RMSDay(RMS):
-    pu1 = ndb.FloatProperty(required=True)
-    pu2 = ndb.FloatProperty(required=True)
-    pu3 = ndb.FloatProperty(required=True)
+class RMSMonth(RMSResolution):
+    period_sag1 = ndb.IntegerProperty(required=True)
+    period_sag2 = ndb.IntegerProperty(required=True)
+    period_sag3 = ndb.IntegerProperty(required=True)
     total_sag1 = ndb.IntegerProperty(required=True)
     total_sag2 = ndb.IntegerProperty(required=True)
     total_sag3 = ndb.IntegerProperty(required=True)
 
 
-class RMSMonth(RMS):
-    pu1 = ndb.FloatProperty(required=True)
-    pu2 = ndb.FloatProperty(required=True)
-    pu3 = ndb.FloatProperty(required=True)
-    total_sag1 = ndb.IntegerProperty(required=True)
-    total_sag2 = ndb.IntegerProperty(required=True)
-    total_sag3 = ndb.IntegerProperty(required=True)
-
-
-class RMSYear(RMS):
-    pu1 = ndb.FloatProperty(required=True)
-    pu2 = ndb.FloatProperty(required=True)
-    pu3 = ndb.FloatProperty(required=True)
+class RMSYear(RMSResolution):
+    period_sag1 = ndb.IntegerProperty(required=True)
+    period_sag2 = ndb.IntegerProperty(required=True)
+    period_sag3 = ndb.IntegerProperty(required=True)
     total_sag1 = ndb.IntegerProperty(required=True)
     total_sag2 = ndb.IntegerProperty(required=True)
     total_sag3 = ndb.IntegerProperty(required=True)

@@ -3,6 +3,7 @@
 # Import the Flask Framework
 from google.appengine.ext import ndb
 from google.appengine.api import mail
+from google.appengine.api import taskqueue
 from flask import Flask,jsonify
 from flask import request
 from crossdomain import crossdomain
@@ -14,7 +15,6 @@ app = Flask(__name__)
 @app.route('/clear', methods=['GET'])
 def get_clear():
     ndb.delete_multi(RMS.query().iter(keys_only = True))
-    ndb.delete_multi(RMSSecond.query().iter(keys_only = True))
     ndb.delete_multi(RMSMinute.query().iter(keys_only = True))
     ndb.delete_multi(RMSHour.query().iter(keys_only = True))
     ndb.delete_multi(RMSDay.query().iter(keys_only = True))
@@ -27,14 +27,28 @@ def get_clear():
 @app.route('/rms.json', methods=['POST', 'OPTIONS'])
 @crossdomain(origin='*', headers='Origin, X-Requested-With, Content-Type, Accept')
 def post_rms():
-    pu1 = (100 - request.json['pu1']) if (request.json['pu1'] <= 100) else 100
-    pu2 = (100 - request.json['pu2']) if (request.json['pu2'] <= 100) else 100
-    pu3 = (100 - request.json['pu3']) if (request.json['pu3'] <= 100) else 100
+    logging.debug('timestamp post: %d' % request.json['timestamp'])
+    taskqueue.add(url='/rms_queue', params={
+        'pu1': request.json['pu1'],
+        'pu2': request.json['pu2'],
+        'pu3': request.json['pu3'],
+        'timestamp': request.json['timestamp']})
+
+    return jsonify({'status': 'OK'}), 201
+
+
+@app.route('/rms_queue', methods=['POST', 'OPTIONS'])
+@crossdomain(origin='*', headers='Origin, X-Requested-With, Content-Type, Accept')
+def rms_queue():
+    logging.debug('timestamp queue: %d' % int(request.values['timestamp']))
+    pu1 = (100 - int(request.values['pu1'])) if (int(request.values['pu1']) <= 100) else 100
+    pu2 = (100 - int(request.values['pu2'])) if (int(request.values['pu2']) <= 100) else 100
+    pu3 = (100 - int(request.values['pu3'])) if (int(request.values['pu3']) <= 100) else 100
     this_rms = RMS(
         pu1=pu1,
         pu2=pu2,
         pu3=pu3,
-        timestamp=request.json['timestamp'])
+        timestamp=int(request.values['timestamp']))
 
     # push to other resolution
     # get last rms
@@ -44,12 +58,6 @@ def post_rms():
         # check for sag
         if prev_rms.pu1 <= 90 or prev_rms.pu2 <= 90 or prev_rms.pu3 <= 90:
             sag_time_all = int(this_rms.timestamp) - int(prev_rms.timestamp)
-            sag_pu1 = prev_rms.pu1
-            sag_pu2 = prev_rms.pu2
-            sag_pu3 = prev_rms.pu3
-            add_sag1 = 1 if prev_rms.pu1 <= 90 else 0
-            add_sag2 = 1 if prev_rms.pu2 <= 90 else 0
-            add_sag3 = 1 if prev_rms.pu3 <= 90 else 0
 
             # add sag avg in first block
             sag_time_can = (prev_rms.timestamp - (prev_rms.timestamp % 60000)) + 60000 - prev_rms.timestamp
@@ -59,32 +67,33 @@ def post_rms():
                 sag_time = sag_time_can
             minute_block_from = prev_rms.timestamp - (prev_rms.timestamp % 60000)
             minute_block_to = minute_block_from + 60000 - 1
-            rms_minute_query = RMSMinute.query_rms(minute_block_from, minute_block_to, None, False)
+            rms_minute_query = RMSMinute.query_rms(minute_block_from, minute_block_to, None, True)
+
+            if sag_time < 0:
+                    logging.debug('neg sag: %d, %d, %d, %d, %d' % (sag_time_all, sag_time_can, sag_time, int(this_rms.timestamp), int(prev_rms.timestamp)))
             if rms_minute_query.count() > 0:
                 # already have the average, use previous average to calculate next avg
                 prev_avg = rms_minute_query.get()
                 # calculate next avg
-                prev_avg.pu1 = ((prev_avg.pu1 * 60000) + (sag_pu1 * sag_time) - (100 * sag_time))/60000.0
-                prev_avg.pu2 = ((prev_avg.pu2 * 60000) + (sag_pu2 * sag_time) - (100 * sag_time))/60000.0
-                prev_avg.pu3 = ((prev_avg.pu3 * 60000) + (sag_pu3 * sag_time) - (100 * sag_time))/60000.0
-                prev_avg.total_sag1 += add_sag1
-                prev_avg.total_sag2 += add_sag2
-                prev_avg.total_sag3 += add_sag3
+                prev_avg.period_sag1 += (sag_time if prev_rms.pu1 <= 90 else 0)
+                prev_avg.period_sag2 += (sag_time if prev_rms.pu2 <= 90 else 0)
+                prev_avg.period_sag3 += (sag_time if prev_rms.pu3 <= 90 else 0)
+                prev_avg.total_sag1 += (1 if prev_rms.pu1 <= 90 else 0)
+                prev_avg.total_sag2 += (1 if prev_rms.pu2 <= 90 else 0)
+                prev_avg.total_sag3 += (1 if prev_rms.pu3 <= 90 else 0)
                 prev_avg.put()
             else:
                 # don't have average
-                avg_pu1 = ((sag_pu1 * sag_time) + (100 * (60000 - sag_time)))/60000.0
-                avg_pu2 = ((sag_pu2 * sag_time) + (100 * (60000 - sag_time)))/60000.0
-                avg_pu3 = ((sag_pu3 * sag_time) + (100 * (60000 - sag_time)))/60000.0
                 new_rms_minute = RMSMinute(
-                    pu1=avg_pu1,
-                    pu2=avg_pu2,
-                    pu3=avg_pu3,
                     timestamp=minute_block_from,
-                    total_sag1=add_sag1,
-                    total_sag2=add_sag2,
-                    total_sag3=add_sag3)
+                    period_sag1=(sag_time if prev_rms.pu1 <= 90 else 0),
+                    period_sag2=(sag_time if prev_rms.pu2 <= 90 else 0),
+                    period_sag3=(sag_time if prev_rms.pu3 <= 90 else 0),
+                    total_sag1=(1 if prev_rms.pu1 <= 90 else 0),
+                    total_sag2=(1 if prev_rms.pu2 <= 90 else 0),
+                    total_sag3=(1 if prev_rms.pu3 <= 90 else 0))
                 new_rms_minute.put()
+                logging.debug('create minute, this %d' % minute_block_from)
 
             # fill next overlap block
             sag_time_left = sag_time_all - sag_time
@@ -95,31 +104,32 @@ def post_rms():
                 else:
                     sag_time_this_block = sag_time_left
 
-                rms_minute_query = RMSMinute.query_rms(next_block_pointer, next_block_pointer + 60000 - 1, None, False)
+                rms_minute_query = RMSMinute.query_rms(next_block_pointer, next_block_pointer + 60000 - 1, None, True)
+
+                if sag_time_this_block < 0:
+                    logging.debug('neg sag 2: %d' % sag_time_this_block)
                 if rms_minute_query.count() > 0:
                     # already have the average, use previous average to calculate next avg
                     prev_avg = rms_minute_query.get()
                     # calculate next avg
-                    prev_avg.pu1 = ((prev_avg.pu1 * 60000) + (sag_pu1 * sag_time_this_block) - (100 * sag_time_this_block))/60000.0
-                    prev_avg.pu2 = ((prev_avg.pu2 * 60000) + (sag_pu2 * sag_time_this_block) - (100 * sag_time_this_block))/60000.0
-                    prev_avg.pu3 = ((prev_avg.pu3 * 60000) + (sag_pu3 * sag_time_this_block) - (100 * sag_time_this_block))/60000.0
+                    prev_avg.period_sag1 += (sag_time_this_block if prev_rms.pu1 <= 90 else 0)
+                    prev_avg.period_sag2 += (sag_time_this_block if prev_rms.pu2 <= 90 else 0)
+                    prev_avg.period_sag3 += (sag_time_this_block if prev_rms.pu3 <= 90 else 0)
                     prev_avg.put()
                 else:
-                    avg_pu1 = ((sag_pu1 * sag_time_this_block) + (100 * (60000 - sag_time_this_block)))/60000.0
-                    avg_pu2 = ((sag_pu2 * sag_time_this_block) + (100 * (60000 - sag_time_this_block)))/60000.0
-                    avg_pu3 = ((sag_pu3 * sag_time_this_block) + (100 * (60000 - sag_time_this_block)))/60000.0
                     new_rms_minute = RMSMinute(
-                        pu1=avg_pu1,
-                        pu2=avg_pu2,
-                        pu3=avg_pu3,
                         timestamp=next_block_pointer,
+                        period_sag1=(sag_time_this_block if prev_rms.pu1 <= 90 else 0),
+                        period_sag2=(sag_time_this_block if prev_rms.pu2 <= 90 else 0),
+                        period_sag3=(sag_time_this_block if prev_rms.pu3 <= 90 else 0),
                         total_sag1=0,
                         total_sag2=0,
                         total_sag3=0)
                     new_rms_minute.put()
+                    logging.debug('update minute, next %d' % next_block_pointer)
 
-                    sag_time_left -= sag_time_this_block
-                    next_block_pointer += 60000
+                sag_time_left -= sag_time_this_block
+                next_block_pointer += 60000
 
             # update hour resolution
             _update_resolution(prev_rms, this_rms, (60*60*1000), RMSMinute, RMSHour)
@@ -143,61 +153,54 @@ def _update_resolution(prev_rms, this_rms, block_time, FromTable, ToTable):
     rms_list = FromTable.query_rms(block_pointer,
                                    block_pointer + block_time - 1, None, False).fetch()
     while block_pointer < this_rms.timestamp:
-        avg_pu1, avg_pu2, avg_pu3, sag_pu1, sag_pu2, sag_pu3 = _avg_rms_list(rms_list, 60)
+        period_sag1, period_sag2, period_sag3, total_sag1, total_sag2, total_sag3 = _avg_rms_list(rms_list)
         rms_query = ToTable.query_rms(block_pointer,
                                          block_pointer + block_time - 1, None, False)
         if rms_query.count() > 0:
             # already have the average, use previous average to calculate next avg
             prev_avg = rms_query.get()
-            prev_avg.pu1 = avg_pu1
-            prev_avg.pu2 = avg_pu2
-            prev_avg.pu3 = avg_pu3
-            prev_avg.total_sag1 = sag_pu1
-            prev_avg.total_sag2 = sag_pu2
-            prev_avg.total_sag3 = sag_pu3
+            prev_avg.period_sag1 = period_sag1
+            prev_avg.period_sag2 = period_sag2
+            prev_avg.period_sag3 = period_sag3
+            prev_avg.total_sag1 = total_sag1
+            prev_avg.total_sag2 = total_sag2
+            prev_avg.total_sag3 = total_sag3
             prev_avg.put()
         else:
             # don't have average
             new_rms = ToTable(
-                pu1=avg_pu1,
-                pu2=avg_pu2,
-                pu3=avg_pu3,
                 timestamp=block_pointer,
-                total_sag1=sag_pu1,
-                total_sag2=sag_pu2,
-                total_sag3=sag_pu3)
+                period_sag1=period_sag1,
+                period_sag2=period_sag2,
+                period_sag3=period_sag3,
+                total_sag1=total_sag1,
+                total_sag2=total_sag2,
+                total_sag3=total_sag3)
             new_rms.put()
 
         block_pointer += block_time
-        rms_list = FromTable.query_rms(block_pointer,
-                                        block_pointer + block_time - 1,
-                                        None, False).fetch()
+        rms_list = FromTable.query_rms(block_pointer, block_pointer + block_time - 1,
+                                       None, False).fetch()
 
-def _avg_rms_list(rms_list, n):
-    sum_pu1 = 0
-    sum_pu2 = 0
-    sum_pu3 = 0
-    sag_pu1 = 0
-    sag_pu2 = 0
-    sag_pu3 = 0
+
+def _avg_rms_list(rms_list):
+    period_sag1 = 0
+    period_sag2 = 0
+    period_sag3 = 0
+    total_sag1 = 0
+    total_sag2 = 0
+    total_sag3 = 0
     length = len(rms_list)
-    for i in range(0, n):
+    for i in range(0, length):
         if i < length:
-            sum_pu1 += rms_list[i].pu1
-            sum_pu2 += rms_list[i].pu2
-            sum_pu3 += rms_list[i].pu3
-            sag_pu1 += rms_list[i].total_sag1
-            sag_pu2 += rms_list[i].total_sag2
-            sag_pu3 += rms_list[i].total_sag3
-        else:
-            sum_pu1 += 100
-            sum_pu2 += 100
-            sum_pu3 += 100
-    avg_pu1 = sum_pu1 / float(n)
-    avg_pu2 = sum_pu2 / float(n)
-    avg_pu3 = sum_pu3 / float(n)
+            period_sag1 += rms_list[i].period_sag1
+            period_sag2 += rms_list[i].period_sag2
+            period_sag3 += rms_list[i].period_sag3
+            total_sag1 += rms_list[i].total_sag1
+            total_sag2 += rms_list[i].total_sag2
+            total_sag3 += rms_list[i].total_sag3
 
-    return avg_pu1, avg_pu2, avg_pu3, sag_pu1, sag_pu2, sag_pu3
+    return period_sag1, period_sag2, period_sag3, total_sag1, total_sag2, total_sag3
 
 
 @app.route('/rms.json', methods=['GET'])
@@ -217,30 +220,43 @@ def get_rms():
         return jsonify({'status': 'Invalid time'})
 
     if is_scale is True:
+        tmp_start = start
+        tmp_end = end
         if start is None:
-            start = RMS.query_rms(None, None, 1, True)[0].timestamp
+            tmp_start = RMS.query_rms(None, None, 1, True)[0].timestamp
         if end is None:
-            end = RMS.query_rms(None, None, 1, False)[0].timestamp
+            tmp_end = RMS.query_rms(None, None, 1, False)[0].timestamp
 
-        selected_range = end - start
+        selected_range = tmp_end - tmp_start
 
+        block_time = 1
         if selected_range < 30 * 60 * 60 * 1000:               # 30 hours range
             # return 1 point per minute
             query = RMSMinute.query_rms(start, end, count, is_asc)
+            block_time = 60 * 1000
         elif selected_range < 31 * 24 * 60 * 60 * 1000:          # one month range
             # return 1 point per hour
             query = RMSHour.query_rms(start, end, count, is_asc)
+            block_time = 60 * 60 * 1000
         else:                                                    # > one month range
             # return 1 point per day
             query = RMSDay.query_rms(start, end, count, is_asc)
+            block_time = 24 * 60 * 60 * 1000
     else:
         query = RMS.query_rms(start, end, count, is_asc)
 
     rms_list = []
     for rms in query:
-        data = {'timestamp': rms.timestamp, 'pu1': rms.pu1, 'pu2': rms.pu2, 'pu3': rms.pu3}
+        data = {'timestamp': rms.timestamp}
         if is_scale is True:
-            data.update({'total_sag1': rms.total_sag1, 'total_sag2': rms.total_sag2, 'total_sag3': rms.total_sag3})
+            data.update({'pu1': (rms.period_sag1 / float(block_time)) * 100,
+                         'pu2': (rms.period_sag2 / float(block_time)) * 100,
+                         'pu3': (rms.period_sag3 / float(block_time)) * 100,
+                         'total_sag1': rms.total_sag1,
+                         'total_sag2': rms.total_sag2,
+                         'total_sag3': rms.total_sag3})
+        else:
+            data.update({'pu1': rms.pu1, 'pu2': rms.pu2, 'pu3': rms.pu3})
         rms_list.append(data)
 
     results = {'rms': rms_list}

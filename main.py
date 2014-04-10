@@ -92,9 +92,9 @@ def post_rms():
                     pu2=avg_pu2,
                     pu3=avg_pu3,
                     timestamp=next_block_pointer,
-                    total_sag1=add_sag1,
-                    total_sag2=add_sag2,
-                    total_sag3=add_sag3)
+                    total_sag1=0,
+                    total_sag2=0,
+                    total_sag3=0)
                 new_rms_minute.put()
 
                 sag_time_left -= sag_time_this_block

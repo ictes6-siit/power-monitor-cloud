@@ -297,68 +297,75 @@ def mailnotify():
     last_ts_query = 0
     querylastts = LastTS.query().order(-LastTS.lastts).fetch(1)
     if not querylastts:
-        logging.info('nolist')
+        logging.info('nolist last timestamp=0')
     else:
-    #if 1==1:
+        logging.info('get timestamp from db')
         for tmp_ts in querylastts:
             last_ts_query = tmp_ts.lastts
 
-        data=RMS.query(RMS.timestamp > last_ts_query).order(-RMS.timestamp).fetch()
+    data = RMS.query(RMS.timestamp > last_ts_query).order(-RMS.timestamp).fetch()
 
-        users = Email.query().fetch()
-        logging.info('len='+str(range(len(data))))
-        logging.info(data)
-        if data:
-            for user in users:
-                logging.info(user.email+" "+str(user.enable))
-                sag1 = 0
-                sag2 = 0
-                sag3 = 0
-                body_forsend = ''
-                if user.enable:
-                    for tmp in data:
-                        task={'pu1': tmp.pu1, 'pu2': tmp.pu2, 'pu3': tmp.pu3, 'timestamp': tmp.timestamp}
-                        powerdata.append(task)
+    users = Email.query().fetch()
+    logging.info('len='+str(range(len(data))))
+    logging.info(data)
+    if data:
+        for user in users:
+            logging.info(user.email+" "+str(user.enable))
+            sag1 = 0
+            sag2 = 0
+            sag3 = 0
+            sendmail = 0
+            body_forsend = ''
+            if user.enable:
+                for tmp in data:
+                    task={'pu1': tmp.pu1, 'pu2': tmp.pu2, 'pu3': tmp.pu3, 'timestamp': tmp.timestamp}
+                    powerdata.append(task)
 
-                        #calculate here to send or not
-                        #case1: percent change > 10
-                        unix_timestamp = str(tmp.timestamp)
-                        milliseconds = 0
-                        time_readable = 0
-                        if len(unix_timestamp) == 13:
-                            milliseconds = float(str(unix_timestamp)[-3:])
-                            unix_timestamp = float(str(unix_timestamp)[0:-3])
+                    #calculate here to send or not
+                    #case1: percent change > 10
+                    unix_timestamp = str(tmp.timestamp)
+                    milliseconds = 0
+                    time_readable = 0
+                    if len(unix_timestamp) == 13:
+                        milliseconds = float(str(unix_timestamp)[-3:])
+                        unix_timestamp = float(str(unix_timestamp)[0:-3])
 
-                            time_readable = datetime.datetime.fromtimestamp(unix_timestamp)
-                            time_readable += datetime.timedelta(milliseconds=milliseconds)
+                        time_readable = datetime.datetime.fromtimestamp(unix_timestamp)
+                        time_readable += datetime.timedelta(milliseconds=milliseconds)
 
-                        if tmp.pu1 > user.percent:
-                            sag1 += 1
-                            body_pu1 = 'Phase 1 sag : Voltage changed for %s %%\n' % tmp.pu1
-                            body_forsend += body_pu1
-                        if tmp.pu2 > user.percent:
-                            sag2 += 1
-                            body_pu2 = 'Phase 2 sag : Voltage changed for %s %%\n' % tmp.pu2
-                            body_forsend += body_pu2
-                        if tmp.pu3 > user.percent:
-                            sag3 += 1
-                            body_pu3 = 'Phase 3 sag : Voltage changed for %s %%\n' % tmp.pu3
-                            body_forsend += body_pu3
-                        if tmp.pu1 > user.percent or tmp.pu2 > user.percent or tmp.pu3 > user.percent:
-                            body_forsend += 'at time ' + str(time_readable) + '\n\n'
+                    if tmp.pu1 > user.percent:
+                        sag1 += 1
+                        body_pu1 = 'Phase 1 sag : Voltage is at %s %%\n' % tmp.pu1
+                        body_forsend += body_pu1
+                        sendmail = 1
+                    if tmp.pu2 > user.percent:
+                        sag2 += 1
+                        body_pu2 = 'Phase 2 sag : Voltage is at %s %%\n' % tmp.pu2
+                        body_forsend += body_pu2
+                        sendmail = 1
+                    if tmp.pu3 > user.percent:
+                        sag3 += 1
+                        body_pu3 = 'Phase 3 sag : Voltage is at %s %%\n' % tmp.pu3
+                        body_forsend += body_pu3
+                        sendmail = 1
+                    if tmp.pu1 > user.percent or tmp.pu2 > user.percent or tmp.pu3 > user.percent:
+                        body_forsend += 'at time ' + str(time_readable) + '\n\n'
 
-                    mail.send_mail(sender='toonja1990@gmail.com',
-                                   to=user.email,
-                                   subject='Voltage Sag Alert !', body=body_forsend)
+                if sendmail == 0:
+                    logging.info('email not send')
+                elif sendmail == 1:
+                    mail.send_mail(sender='Toonja 1990 <toonja1990@gmail.com>',
+                    to=user.email,
+                    subject='Voltage Sag Alert !',
+                    body=body_forsend)
+                logging.info(body_forsend)
 
-                    logging.info(body_forsend)
-
-            #remember last timestamp of sag data
-            lasttimestamp = powerdata[0]
-            last_ts = LastTS(lastts=lasttimestamp['timestamp'])
-            last_ts.put()
-        else:
-            logging.info('No data to sent')
+        #remember last timestamp of sag data
+        lasttimestamp = powerdata[0]
+        last_ts = LastTS(lastts=lasttimestamp['timestamp'])
+        last_ts.put()
+    else:
+        logging.info('No data to sent')
 
     return 'alert success'
 

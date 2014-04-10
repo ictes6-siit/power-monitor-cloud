@@ -2,10 +2,13 @@
 
 # Import the Flask Framework
 from google.appengine.ext import ndb
+from google.appengine.api import mail
 from flask import Flask,jsonify
 from flask import request
 from crossdomain import crossdomain
 from model import *
+import datetime
+import logging
 app = Flask(__name__)
 
 @app.route('/test', methods=['GET'])
@@ -234,9 +237,8 @@ def post_email():
     email = Email(
         id=request.json['email'],
         email=request.json['email'],
-        sag=int(request.json['sag']),
-        time=int(request.json['time']),
-        enabled=bool(request.json['enabled']))
+        percent=int(request.json['percent']),
+        enable=bool(request.json['enable']))
     email.put()
     return jsonify({'status': 'OK'}), 201
 
@@ -254,9 +256,8 @@ def delete_email():
 def put_email():
     email_key = ndb.Key(Email, str(request.json['email']))
     email = email_key.get()
-    email.sag = request.json['sag']
-    email.time = request.json['time']
-    email.enabled = request.json['enabled']
+    email.percent = request.json['percent']
+    email.enable = request.json['enable']
     email.put()
     return jsonify({'status': 'OK'}), 201
 
@@ -267,10 +268,83 @@ def get_email():
     email_list = []
     query = Email.query()
     for email in query:
-        data = {'email': email.email, 'sag': email.sag, 'time': email.time, 'enabled': email.enabled}
+        data = {'email': email.email, 'percent': email.percent, 'enable': email.enable}
         email_list.append(data)
     results = {'email': email_list}
     return jsonify({'status': 'OK', 'results': results}), 200
+
+
+@app.route('/mailnotify', methods=['get'])
+def mailnotify():
+    powerdata = []
+
+    last_ts_query = 0
+    querylastts = LastTS.query().order(-LastTS.lastts).fetch(1)
+    if not querylastts:
+        logging.info('nolist')
+    else:
+    #if 1==1:
+        for tmp_ts in querylastts:
+            last_ts_query = tmp_ts.lastts
+
+        data=RMS.query(RMS.timestamp > last_ts_query).order(-RMS.timestamp).fetch()
+
+        users = Email.query().fetch()
+        logging.info('len='+str(range(len(data))))
+        logging.info(data)
+        if data:
+            for user in users:
+                logging.info(user.email+" "+str(user.enable))
+                sag1 = 0
+                sag2 = 0
+                sag3 = 0
+                body_forsend = ''
+                if user.enable:
+                    for tmp in data:
+                        task={'pu1': tmp.pu1, 'pu2': tmp.pu2, 'pu3': tmp.pu3, 'timestamp': tmp.timestamp}
+                        powerdata.append(task)
+
+                        #calculate here to send or not
+                        #case1: percent change > 10
+                        unix_timestamp = str(tmp.timestamp)
+                        milliseconds = 0
+                        time_readable = 0
+                        if len(unix_timestamp) == 13:
+                            milliseconds = float(str(unix_timestamp)[-3:])
+                            unix_timestamp = float(str(unix_timestamp)[0:-3])
+
+                            time_readable = datetime.datetime.fromtimestamp(unix_timestamp)
+                            time_readable += datetime.timedelta(milliseconds=milliseconds)
+
+                        if tmp.pu1 > user.percent:
+                            sag1 += 1
+                            body_pu1 = 'Phase 1 sag : Voltage changed for %s %%\n' % tmp.pu1
+                            body_forsend += body_pu1
+                        if tmp.pu2 > user.percent:
+                            sag2 += 1
+                            body_pu2 = 'Phase 2 sag : Voltage changed for %s %%\n' % tmp.pu2
+                            body_forsend += body_pu2
+                        if tmp.pu3 > user.percent:
+                            sag3 += 1
+                            body_pu3 = 'Phase 3 sag : Voltage changed for %s %%\n' % tmp.pu3
+                            body_forsend += body_pu3
+                        if tmp.pu1 > user.percent or tmp.pu2 > user.percent or tmp.pu3 > user.percent:
+                            body_forsend += 'at time ' + str(time_readable) + '\n\n'
+
+                    mail.send_mail(sender='toonja1990@gmail.com',
+                                   to=user.email,
+                                   subject='Voltage Sag Alert !', body=body_forsend)
+
+                    logging.info(body_forsend)
+
+            #remember last timestamp of sag data
+            lasttimestamp = powerdata[0]
+            last_ts = LastTS(lastts=lasttimestamp['timestamp'])
+            last_ts.put()
+        else:
+            logging.info('No data to sent')
+
+    return 'alert success'
 
 
 @app.errorhandler(404)

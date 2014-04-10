@@ -89,6 +89,9 @@ class RMSYear(RMS):
 
 class Email(ndb.Model):
     email = ndb.StringProperty(required=True)
-    sag = ndb.IntegerProperty(required=True)
-    time = ndb.IntegerProperty(required=True)
-    enabled = ndb.BooleanProperty(required=True)
+    enable = ndb.BooleanProperty(required=True)
+    percent = ndb.IntegerProperty(required=True)
+
+
+class LastTS(ndb.Model):
+    lastts=ndb.IntegerProperty()

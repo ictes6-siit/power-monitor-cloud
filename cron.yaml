@@ -1,0 +1,4 @@
+cron:
+- description: check every 1 minutes for sending alert
+  url: /mailnotify
+  schedule: every 1 minutes
